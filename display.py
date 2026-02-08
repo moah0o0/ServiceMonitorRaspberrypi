@@ -87,11 +87,15 @@ class Display:
         draw = ImageDraw.Draw(img)
 
         try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
-            font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
+            font = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothic.ttf", 12)
+            font_sm = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothic.ttf", 10)
         except Exception:
-            font = ImageFont.load_default()
-            font_sm = font
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+                font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
+            except Exception:
+                font = ImageFont.load_default()
+                font_sm = font
 
         # 상단: 시간 + 요약
         now = datetime.now(KST).strftime("%m/%d %H:%M:%S")
@@ -126,7 +130,7 @@ class Display:
         # 큰 경고 아이콘 영역
         draw.rectangle([(10, 40), (230, 140)], outline=COLOR_SYS_ERROR, width=2)
         try:
-            font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+            font_lg = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf", 18)
         except Exception:
             font_lg = font
 
@@ -152,7 +156,7 @@ class Display:
             # 상태 도트
             draw.ellipse([(5, y + 2), (13, y + 10)], fill=color)
             # 서비스명 (잘라서 표시)
-            name = s["name"][:22]
+            name = s["name"][:18]
             draw.text((18, y), name, fill=COLOR_TEXT, font=font)
             y += 14
             if y > 235:
