@@ -60,7 +60,7 @@ class Display:
             self.disp = ST7789(
                 spi, cs=cs_pin, dc=dc_pin, rst=reset_pin,
                 baudrate=64000000, width=DISPLAY_WIDTH, height=DISPLAY_HEIGHT,
-                x_offset=0, y_offset=80, rotation=90,
+                x_offset=0, y_offset=80, rotation=270,
             )
             self.enabled = True
             logger.info("PiTFT 디스플레이 초기화 성공")
