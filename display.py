@@ -77,11 +77,17 @@ class Display:
         self._button_pressed = False
         try:
             import RPi.GPIO as GPIO
+            GPIO.setwarnings(False)
             GPIO.setmode(GPIO.BCM)
             GPIO.setup(23, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             GPIO.setup(24, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            GPIO.add_event_detect(23, GPIO.FALLING, callback=self._on_button, bouncetime=300)
-            GPIO.add_event_detect(24, GPIO.FALLING, callback=self._on_button, bouncetime=300)
+            # 이전 프로세스의 edge detection 정리 후 재등록
+            for pin in (23, 24):
+                try:
+                    GPIO.remove_event_detect(pin)
+                except Exception:
+                    pass
+                GPIO.add_event_detect(pin, GPIO.FALLING, callback=self._on_button, bouncetime=300)
             logger.info("GPIO 버튼 인터럽트 등록 완료")
         except Exception as e:
             logger.info(f"GPIO 버튼 사용 불가: {e}")
