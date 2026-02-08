@@ -90,9 +90,10 @@ class Monitor:
         self.display.update(states)
 
     def _display_loop(self):
-        """디스플레이 전용 스레드: 시계 갱신 + 버튼 체크 (30초 간격)"""
+        """디스플레이 전용 스레드: 버튼 1초마다 체크, 화면 30초마다 갱신"""
+        tick = 0
         while self.running:
-            # 버튼 체크
+            # 버튼 체크 (1초마다)
             btn = self.display.check_buttons()
             if btn["force_check"]:
                 logger.info("수동 체크 요청 (버튼)")
@@ -100,15 +101,12 @@ class Monitor:
             elif btn["detail_toggle"]:
                 self._refresh_display()
 
-            # 시계 갱신 (디스플레이 활성 시)
-            if self.display.enabled:
+            # 화면 갱신 (30초마다)
+            if tick % DISPLAY_REFRESH == 0 and self.display.enabled:
                 self._refresh_display()
 
-            # 30초 대기 (1초 단위로 쪼개서 종료 반응)
-            for _ in range(DISPLAY_REFRESH):
-                if not self.running:
-                    return
-                time.sleep(1)
+            tick += 1
+            time.sleep(1)
 
     def run(self):
         """메인 루프"""
