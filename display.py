@@ -1,11 +1,11 @@
 """
 PiTFT 디스플레이 (240x240)
-Pillow로 이미지 생성 → SPI로 전송
+Pillow로 이미지 생성 -> SPI로 전송
 라즈베리파이가 아닌 환경에서는 자동 비활성화
 
-- 페이지 0: 대시보드 (큰 원형 상태 + 에러 목록)
-- 페이지 1+: 서비스 리스트 (히스토리 바 포함, 7개씩)
-- 에러 서비스는 항상 우선 표시
+최소 폰트 22pt / 빠른 페이지 전환 / 에러 강조
+- 페이지 0: 대시보드 (큰 원 + 상태)
+- 페이지 1+: 서비스 리스트 (5개씩, 에러 우선)
 """
 
 import logging
@@ -31,8 +31,8 @@ COLOR_HISTORY_EMPTY = (40, 40, 40)
 
 DISPLAY_WIDTH = 240
 DISPLAY_HEIGHT = 240
-LIST_PER_PAGE = 7
-PAGE_INTERVAL = 5
+LIST_PER_PAGE = 5
+PAGE_INTERVAL = 3  # 3초마다 자동 페이지 전환
 
 
 class Display:
@@ -40,7 +40,6 @@ class Display:
         self.enabled = False
         self.disp = None
         self._font = None
-        self._font_sm = None
         self._font_lg = None
         self._font_xl = None
 
@@ -62,21 +61,18 @@ class Display:
             self.enabled = True
             logger.info("PiTFT 디스플레이 초기화 성공")
 
-            # 폰트 캐싱
+            # 폰트: 최소 22pt
             try:
-                self._font = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothic.ttf", 13)
-                self._font_sm = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothic.ttf", 11)
-                self._font_lg = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf", 18)
-                self._font_xl = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf", 26)
+                self._font = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf", 22)
+                self._font_lg = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf", 30)
+                self._font_xl = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf", 40)
             except Exception:
                 try:
-                    self._font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
-                    self._font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
-                    self._font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-                    self._font_xl = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)
+                    self._font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
+                    self._font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 30)
+                    self._font_xl = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
                 except Exception:
                     self._font = ImageFont.load_default()
-                    self._font_sm = self._font
                     self._font_lg = self._font
                     self._font_xl = self._font
 
@@ -124,15 +120,13 @@ class Display:
 
         from PIL import Image, ImageDraw
 
-        # 에러 분류
         errors = [s for s in states if s["status"] != "ok"]
         oks = [s for s in states if s["status"] == "ok"]
         has_errors = len(errors) > 0
         sorted_states = errors + oks
 
-        # 페이지 계산: 페이지0=대시보드, 페이지1+=리스트
         list_pages = max(1, (len(sorted_states) + LIST_PER_PAGE - 1) // LIST_PER_PAGE)
-        total_pages = 1 + list_pages  # 대시보드 + 리스트 페이지들
+        total_pages = 1 + list_pages
         page = self._page % total_pages
 
         img = Image.new("RGB", (DISPLAY_WIDTH, DISPLAY_HEIGHT), COLOR_BG)
@@ -141,7 +135,6 @@ class Display:
         if has_errors:
             draw.rectangle([(0, 0), (DISPLAY_WIDTH, DISPLAY_HEIGHT)], fill=COLOR_BG_ERROR)
 
-        # 시스템 에러 (최우선)
         if self._system_error:
             self._draw_system_error(draw, self._system_error)
             self.disp.image(img)
@@ -159,22 +152,21 @@ class Display:
         self.disp.image(img)
 
     def _draw_dashboard(self, draw, errors: list, oks: list, total: int, total_pages: int):
-        """페이지 0: 큰 원형 대시보드"""
+        """대시보드: 큰 원 + 숫자"""
         ok_count = len(oks)
         has_errors = len(errors) > 0
 
-        # 시간 (상단 중앙)
-        now = datetime.now(KST).strftime("%m/%d %H:%M:%S")
+        # 시간
+        now = datetime.now(KST).strftime("%H:%M")
         bbox = draw.textbbox((0, 0), now, font=self._font)
         tw = bbox[2] - bbox[0]
-        draw.text(((DISPLAY_WIDTH - tw) // 2, 6), now, fill=COLOR_DIM, font=self._font)
+        draw.text(((DISPLAY_WIDTH - tw) // 2, 4), now, fill=COLOR_DIM, font=self._font)
 
         # 큰 원
-        cx, cy = 120, 95
-        r = 52
+        cx, cy = 120, 110
+        r = 65
         circle_color = COLOR_CIRCLE_ERR if has_errors else COLOR_CIRCLE_OK
-        # 원 테두리 (두꺼운 원)
-        for offset in range(3):
+        for offset in range(4):
             draw.ellipse(
                 [(cx - r - offset, cy - r - offset), (cx + r + offset, cy + r + offset)],
                 outline=circle_color, width=3,
@@ -185,74 +177,65 @@ class Display:
         bbox = draw.textbbox((0, 0), count_text, font=self._font_xl)
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
-        draw.text(((DISPLAY_WIDTH - tw) // 2, cy - th - 2), count_text, fill=COLOR_TEXT, font=self._font_xl)
+        draw.text(((DISPLAY_WIDTH - tw) // 2, cy - th - 4), count_text, fill=COLOR_TEXT, font=self._font_xl)
 
-        # "UP" 또는 "ERR" 텍스트
+        # UP / ERR
         status_text = "ERR" if has_errors else "UP"
         status_color = COLOR_ERROR if has_errors else COLOR_OK
         bbox = draw.textbbox((0, 0), status_text, font=self._font_lg)
         tw = bbox[2] - bbox[0]
-        draw.text(((DISPLAY_WIDTH - tw) // 2, cy + 5), status_text, fill=status_color, font=self._font_lg)
+        draw.text(((DISPLAY_WIDTH - tw) // 2, cy + 8), status_text, fill=status_color, font=self._font_lg)
 
-        # 에러 서비스 목록 (원 아래)
+        # 에러 서비스 (원 아래, 최대 2개)
         if has_errors:
-            y = 160
-            for s in errors[:3]:
-                draw.ellipse([(15, y + 2), (23, y + 10)], fill=COLOR_ERROR)
-                name = s["name"][:18]
-                draw.text((28, y - 2), name, fill=COLOR_TEXT, font=self._font_sm)
-                msg = s.get("message", "")[:20]
-                draw.text((28, y + 12), msg, fill=COLOR_WARN, font=self._font_sm)
+            y = 190
+            for s in errors[:2]:
+                name = s["name"][:15]
+                draw.text((10, y), f"X {name}", fill=COLOR_ERROR, font=self._font)
                 y += 28
-            if len(errors) > 3:
-                draw.text((28, y), f"+{len(errors) - 3}개 더...", fill=COLOR_DIM, font=self._font_sm)
 
-        # 페이지 도트
         self._draw_page_indicator(draw, 0, total_pages)
 
     def _draw_list(self, draw, items: list[dict], errors: list, oks: list, total: int, has_errors: bool):
-        """서비스 리스트 (히스토리 바 포함)"""
+        """서비스 리스트 (5개씩)"""
         ok_count = len(oks)
 
-        # 헤더
-        now = datetime.now(KST).strftime("%m/%d %H:%M")
-        draw.text((5, 5), now, fill=COLOR_TEXT, font=self._font)
-
+        # 헤더: 상태 요약
         if has_errors:
-            status = f"ERR {len(errors)}"
-            draw.text((155, 5), status, fill=COLOR_ERROR, font=self._font)
+            header = f"ERR {len(errors)}  OK {ok_count}"
+            draw.text((8, 4), header, fill=COLOR_ERROR, font=self._font)
         else:
-            status = f"{ok_count}/{total} OK"
-            draw.text((155, 5), status, fill=COLOR_OK, font=self._font)
+            header = f"ALL {total} OK"
+            draw.text((8, 4), header, fill=COLOR_OK, font=self._font)
 
-        draw.line([(0, 23), (240, 23)], fill=COLOR_DIM, width=1)
+        draw.line([(0, 32), (240, 32)], fill=COLOR_DIM, width=1)
 
-        # 서비스 행들
-        y = 27
-        row_h = 27
+        # 서비스 행
+        y = 36
+        row_h = 38
         for s in items:
             is_error = s["status"] != "ok"
-            dot_color = COLOR_ERROR if is_error else COLOR_OK
 
             # 상태 도트
-            draw.ellipse([(5, y + 5), (13, y + 13)], fill=dot_color)
+            dot_color = COLOR_ERROR if is_error else COLOR_OK
+            draw.ellipse([(6, y + 8), (20, y + 22)], fill=dot_color)
 
             # 서비스 이름
-            name = s["name"][:12]
-            draw.text((17, y + 2), name, fill=COLOR_TEXT, font=self._font_sm)
+            name = s["name"][:10]
+            draw.text((26, y + 4), name, fill=COLOR_TEXT, font=self._font)
 
-            # 히스토리 바
+            # 히스토리 바 (우측)
             history = s.get("history", [])
-            self._draw_history_bar(draw, 170, y + 3, history)
+            self._draw_history_bar(draw, 175, y + 6, history)
 
             y += row_h
 
     def _draw_history_bar(self, draw, x: int, y: int, history: list[str]):
-        """최근 10회 체크 히스토리를 색상 블록으로 표시"""
-        block_w = 5
-        block_h = 12
+        """최근 히스토리 블록 (8칸)"""
+        block_w = 6
+        block_h = 18
         gap = 2
-        slots = 10
+        slots = 8
 
         for i in range(slots):
             bx = x + i * (block_w + gap)
@@ -264,9 +247,9 @@ class Display:
 
     def _draw_page_indicator(self, draw, current: int, total: int):
         """하단 페이지 도트"""
-        y = 228
-        dot_size = 6
-        gap = 14
+        y = 230
+        dot_size = 8
+        gap = 16
         total_width = total * dot_size + (total - 1) * (gap - dot_size)
         x = (DISPLAY_WIDTH - total_width) // 2
         for i in range(total):
@@ -276,30 +259,26 @@ class Display:
 
     def _draw_system_error(self, draw, message: str):
         """시스템 에러 전체 화면"""
-        now = datetime.now(KST).strftime("%m/%d %H:%M:%S")
-        bbox = draw.textbbox((0, 0), now, font=self._font)
+        # ERROR 타이틀
+        bbox = draw.textbbox((0, 0), "ERROR", font=self._font_xl)
         tw = bbox[2] - bbox[0]
-        draw.text(((DISPLAY_WIDTH - tw) // 2, 6), now, fill=COLOR_DIM, font=self._font)
+        draw.text(((DISPLAY_WIDTH - tw) // 2, 30), "ERROR", fill=COLOR_SYS_ERROR, font=self._font_xl)
 
-        draw.rectangle([(10, 40), (230, 150)], outline=COLOR_SYS_ERROR, width=2)
-        # ! 아이콘
-        bbox = draw.textbbox((0, 0), "! ERROR !", font=self._font_lg)
-        tw = bbox[2] - bbox[0]
-        draw.text(((DISPLAY_WIDTH - tw) // 2, 55), "! ERROR !", fill=COLOR_SYS_ERROR, font=self._font_lg)
-
+        # 에러 내용
+        draw.rectangle([(8, 85), (232, 180)], outline=COLOR_SYS_ERROR, width=2)
         lines = []
         while message:
-            lines.append(message[:26])
-            message = message[26:]
-        y = 90
+            lines.append(message[:14])
+            message = message[14:]
+        y = 95
         for line in lines[:3]:
-            draw.text((20, y), line, fill=COLOR_TEXT, font=self._font)
-            y += 16
+            draw.text((16, y), line, fill=COLOR_TEXT, font=self._font)
+            y += 28
 
-        draw.text((30, 175), "자동 재시도 대기 중...", fill=COLOR_DIM, font=self._font_sm)
+        draw.text((20, 200), "재시도 대기중...", fill=COLOR_DIM, font=self._font)
 
     def check_buttons(self) -> dict:
-        """버튼 폴링: HIGH→LOW 전환 감지"""
+        """버튼 폴링: HIGH->LOW 전환 감지"""
         result = {"page_change": False}
         if not self._gpio:
             return result
