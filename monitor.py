@@ -36,7 +36,7 @@ class Monitor:
     def __init__(self):
         self.config = load_config()
         self.state = StateStore(self.config.db_path)
-        self.alerter = Alerter(self.config)
+        self.alerter = Alerter()
         self.display = Display()
         self.auth = PocketBaseAuth(self.config.pb_monitor_email, self.config.pb_monitor_password)
         self.running = True
@@ -90,22 +90,23 @@ class Monitor:
         self.display.update(states)
 
     def _display_loop(self):
-        """디스플레이 전용 스레드: 버튼 1초마다 체크, 화면 30초마다 갱신"""
-        tick = 0
+        """디스플레이 전용 스레드: 1초마다 버튼 체크 + 페이지 넘김"""
         while self.running:
-            # 버튼 체크 (1초마다)
+            # 버튼 체크
             btn = self.display.check_buttons()
             if btn["force_check"]:
                 logger.info("수동 체크 요청 (버튼)")
                 self._force_check.set()
-            elif btn["detail_toggle"]:
+            elif btn["page_change"]:
                 self._refresh_display()
 
-            # 화면 갱신 (30초마다)
-            if tick % DISPLAY_REFRESH == 0 and self.display.enabled:
+            # 페이지 자동 넘김 타이머
+            self.display.advance_tick()
+
+            # 화면 갱신 (매 초)
+            if self.display.enabled:
                 self._refresh_display()
 
-            tick += 1
             time.sleep(1)
 
     def run(self):

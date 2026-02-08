@@ -49,8 +49,6 @@ class Service:
 @dataclass
 class Config:
     """전체 설정"""
-    telegram_bot_token: str = ""
-    telegram_alert_channel: str = ""
     pb_monitor_email: str = ""
     pb_monitor_password: str = ""
     check_interval: int = 300        # 5분
@@ -61,8 +59,6 @@ class Config:
 
 def load_config() -> Config:
     return Config(
-        telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
-        telegram_alert_channel=os.getenv("TELEGRAM_ALERT_CHANNEL", ""),
         pb_monitor_email=os.getenv("PB_MONITOR_EMAIL", ""),
         pb_monitor_password=os.getenv("PB_MONITOR_PASSWORD", ""),
         check_interval=int(os.getenv("CHECK_INTERVAL", "300")),
