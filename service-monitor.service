@@ -5,9 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/raspberrypi-monitor
-ExecStart=/home/pi/raspberrypi-monitor/venv/bin/python3 /home/pi/raspberrypi-monitor/monitor.py
+User=chanpi
+WorkingDirectory=/home/chanpi/raspberrypi-monitor
+ExecStart=/home/chanpi/raspberrypi-monitor/venv/bin/python3 /home/chanpi/raspberrypi-monitor/monitor.py
 Restart=always
 RestartSec=30
 

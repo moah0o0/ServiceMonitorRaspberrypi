@@ -90,9 +90,10 @@ class Monitor:
         self.display.update(states)
 
     def _display_loop(self):
-        """디스플레이 전용 스레드: 1초마다 버튼 체크 + 페이지 넘김"""
+        """디스플레이 전용 스레드: 0.2초마다 버튼 체크, 1초마다 화면 갱신"""
+        sub_tick = 0
         while self.running:
-            # 버튼 체크
+            # 버튼 체크 (0.2초마다)
             btn = self.display.check_buttons()
             if btn["force_check"]:
                 logger.info("수동 체크 요청 (버튼)")
@@ -100,14 +101,15 @@ class Monitor:
             elif btn["page_change"]:
                 self._refresh_display()
 
-            # 페이지 자동 넘김 타이머
-            self.display.advance_tick()
+            sub_tick += 1
+            # 1초마다 (5 × 0.2초) 화면 갱신 + 페이지 타이머
+            if sub_tick >= 5:
+                sub_tick = 0
+                self.display.advance_tick()
+                if self.display.enabled:
+                    self._refresh_display()
 
-            # 화면 갱신 (매 초)
-            if self.display.enabled:
-                self._refresh_display()
-
-            time.sleep(1)
+            time.sleep(0.2)
 
     def run(self):
         """메인 루프"""
