@@ -73,22 +73,17 @@ class Display:
         except (ImportError, Exception) as e:
             logger.info(f"PiTFT 사용 불가 (로컬 환경): {e}")
 
-        # 버튼 (GPIO 23, 24) - 인터럽트 방식
-        self._button_pressed = False
+        # 버튼 (GPIO 23, 24) - 폴링 방식 (edge detection 커널 충돌 회피)
+        self._gpio = None
+        self._btn_prev = {23: True, 24: True}  # pull-up이므로 기본 HIGH
         try:
             import RPi.GPIO as GPIO
             GPIO.setwarnings(False)
             GPIO.setmode(GPIO.BCM)
             GPIO.setup(23, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             GPIO.setup(24, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            # 이전 프로세스의 edge detection 정리 후 재등록
-            for pin in (23, 24):
-                try:
-                    GPIO.remove_event_detect(pin)
-                except Exception:
-                    pass
-                GPIO.add_event_detect(pin, GPIO.FALLING, callback=self._on_button, bouncetime=300)
-            logger.info("GPIO 버튼 인터럽트 등록 완료")
+            self._gpio = GPIO
+            logger.info("GPIO 버튼 폴링 모드 등록 완료")
         except Exception as e:
             logger.info(f"GPIO 버튼 사용 불가: {e}")
 
@@ -207,17 +202,17 @@ class Display:
             y += 16
         draw.text((30, 170), "자동 재시도 대기 중...", fill=COLOR_DIM, font=font_sm)
 
-    def _on_button(self, channel):
-        """GPIO 인터럽트 콜백 (즉시 반응)"""
-        self._button_pressed = True
-
     def check_buttons(self) -> dict:
-        """버튼 눌림 확인 (인터럽트로 감지된 것 처리)"""
+        """버튼 폴링: HIGH→LOW 전환 감지 (0.2초마다 호출)"""
         result = {"page_change": False}
-        if self._button_pressed:
-            self._button_pressed = False
-            self._page += 1
-            self._tick = 0
-            self._need_refresh = True
-            result["page_change"] = True
+        if not self._gpio:
+            return result
+        for pin in (23, 24):
+            cur = self._gpio.input(pin)
+            if self._btn_prev[pin] and not cur:  # HIGH→LOW = 눌림
+                self._page += 1
+                self._tick = 0
+                self._need_refresh = True
+                result["page_change"] = True
+            self._btn_prev[pin] = cur
         return result
