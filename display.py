@@ -31,7 +31,7 @@ COLOR_HISTORY_EMPTY = (40, 40, 40)
 
 DISPLAY_WIDTH = 240
 DISPLAY_HEIGHT = 240
-LIST_PER_PAGE = 5
+LIST_PER_PAGE = 4
 PAGE_INTERVAL = 3  # 3초마다 자동 페이지 전환
 
 
@@ -224,31 +224,31 @@ class Display:
 
         draw.line([(0, 32), (240, 32)], fill=COLOR_DIM, width=1)
 
-        # 서비스 행
+        # 서비스 행 (2줄: 이름 + 히스토리 바)
         y = 36
-        row_h = 38
+        row_h = 46
         for s in items:
             is_error = s["status"] != "ok"
 
             # 상태 도트
             dot_color = COLOR_ERROR if is_error else COLOR_OK
-            draw.ellipse([(6, y + 8), (20, y + 22)], fill=dot_color)
+            draw.ellipse([(6, y + 4), (20, y + 18)], fill=dot_color)
 
-            # 서비스 이름 (히스토리 바 전까지 맞춤)
-            name = self._truncate(draw, s["name"], self._font, 140)
-            draw.text((26, y + 4), name, fill=COLOR_TEXT, font=self._font)
+            # 서비스 이름 (전체 너비 사용)
+            name = self._truncate(draw, s["name"], self._font, 210)
+            draw.text((26, y), name, fill=COLOR_TEXT, font=self._font)
 
-            # 히스토리 바 (우측)
+            # 히스토리 바 (이름 아래)
             history = s.get("history", [])
-            self._draw_history_bar(draw, 175, y + 6, history)
+            self._draw_history_bar(draw, 26, y + 26, history)
 
             y += row_h
 
     def _draw_history_bar(self, draw, x: int, y: int, history: list[str]):
         """최근 히스토리 블록 (8칸)"""
-        block_w = 6
-        block_h = 18
-        gap = 2
+        block_w = 20
+        block_h = 12
+        gap = 3
         slots = 8
 
         for i in range(slots):
