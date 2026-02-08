@@ -22,7 +22,6 @@ from alerter import Alerter
 from display import Display
 
 KST = timezone(timedelta(hours=9))
-DISPLAY_REFRESH = 30  # 디스플레이 갱신 주기 (초)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -111,7 +110,7 @@ class Monitor:
 
     def run(self):
         """메인 루프"""
-        logger.info(f"모니터링 시작 (체크 간격: {self.config.check_interval}초, 화면 갱신: {DISPLAY_REFRESH}초)")
+        logger.info(f"모니터링 시작 (체크 간격: {self.config.check_interval}초, 페이지 넘김: 5초)")
         logger.info(f"대상: {len(SERVICES)}개 서비스")
         logger.info(f"스크래퍼 무응답 임계값: {self.config.scrapper_timeout}초")
         logger.info(f"연속 에러 임계값: {self.config.consecutive_error_threshold}회")
