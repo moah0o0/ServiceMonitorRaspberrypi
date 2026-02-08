@@ -7,6 +7,11 @@ Pillow로 이미지 생성 → SPI로 전송
 import logging
 from datetime import datetime, timezone, timedelta
 
+try:
+    from PIL import ImageFont
+except ImportError:
+    ImageFont = None
+
 logger = logging.getLogger(__name__)
 KST = timezone(timedelta(hours=9))
 
@@ -17,6 +22,8 @@ COLOR_ERROR = (220, 30, 30)
 COLOR_WARN = (220, 180, 0)
 COLOR_TEXT = (255, 255, 255)
 COLOR_DIM = (120, 120, 120)
+
+COLOR_SYS_ERROR = (255, 60, 60)
 
 DISPLAY_WIDTH = 240
 DISPLAY_HEIGHT = 240
@@ -63,6 +70,11 @@ class Display:
             pass
 
         self._detail_mode = False
+        self._system_error: str | None = None
+
+    def set_system_error(self, message: str | None):
+        """시스템 에러 설정 (None이면 해제)"""
+        self._system_error = message
 
     def update(self, states: list[dict]):
         """화면 갱신"""
@@ -88,6 +100,15 @@ class Display:
         summary_color = COLOR_OK if ok_count == total else COLOR_ERROR
 
         draw.text((5, 5), now, fill=COLOR_TEXT, font=font)
+
+        # 시스템 에러가 있으면 전체 화면에 경고 표시
+        if self._system_error:
+            draw.text((140, 5), "SYSTEM", fill=COLOR_SYS_ERROR, font=font)
+            draw.line([(0, 22), (240, 22)], fill=COLOR_SYS_ERROR, width=1)
+            self._draw_system_error(draw, self._system_error, font, font_sm)
+            self.disp.image(img)
+            return
+
         draw.text((140, 5), f"{ok_count}/{total} OK", fill=summary_color, font=font)
         draw.line([(0, 22), (240, 22)], fill=COLOR_DIM, width=1)
 
@@ -99,6 +120,29 @@ class Display:
 
         # 디스플레이 전송
         self.disp.image(img)
+
+    def _draw_system_error(self, draw, message: str, font, font_sm):
+        """시스템 에러 전체 화면 표시"""
+        # 큰 경고 아이콘 영역
+        draw.rectangle([(10, 40), (230, 140)], outline=COLOR_SYS_ERROR, width=2)
+        try:
+            font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+        except Exception:
+            font_lg = font
+
+        draw.text((60, 55), "! ERROR !", fill=COLOR_SYS_ERROR, font=font_lg)
+        # 에러 메시지 (줄바꿈 처리)
+        lines = []
+        while message:
+            lines.append(message[:26])
+            message = message[26:]
+        y = 90
+        for line in lines[:3]:
+            draw.text((20, y), line, fill=COLOR_TEXT, font=font)
+            y += 14
+
+        # 하단: 재시도 안내
+        draw.text((30, 170), "자동 재시도 대기 중...", fill=COLOR_DIM, font=font_sm)
 
     def _draw_grid(self, draw, states: list[dict], font):
         """그리드 모드: 서비스명 + 상태 도트"""

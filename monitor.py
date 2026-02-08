@@ -9,6 +9,7 @@
 
 import logging
 import signal
+import socket
 import sys
 import threading
 import time
@@ -41,8 +42,27 @@ class Monitor:
         self.running = True
         self._force_check = threading.Event()
 
+    def _check_network(self) -> bool:
+        """네트워크 연결 상태 확인 (DNS 8.8.8.8:53 접속 시도)"""
+        try:
+            sock = socket.create_connection(("8.8.8.8", 53), timeout=5)
+            sock.close()
+            return True
+        except OSError:
+            return False
+
     def check_all(self):
         """모든 서비스 1회 체크"""
+        # 네트워크 상태 확인
+        if not self._check_network():
+            logger.warning("네트워크 연결 끊김!")
+            self.display.set_system_error("네트워크 연결 끊김")
+            self._refresh_display()
+            return
+
+        # 네트워크 복구 시 시스템 에러 해제
+        self.display.set_system_error(None)
+
         now = datetime.now(KST).strftime("%H:%M:%S")
         logger.info(f"===== 체크 시작 ({now}) - {len(SERVICES)}개 서비스 =====")
 
@@ -134,6 +154,10 @@ def main():
     try:
         monitor.run()
     except KeyboardInterrupt:
+        monitor.stop()
+    except Exception as e:
+        logger.exception("예기치 않은 오류")
+        monitor.display.set_system_error(f"프로그램 오류: {e}")
         monitor.stop()
 
 

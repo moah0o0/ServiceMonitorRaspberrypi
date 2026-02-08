@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/raspberrypi-monitor
-ExecStart=/usr/bin/python3 /home/pi/raspberrypi-monitor/monitor.py
+ExecStart=/home/pi/raspberrypi-monitor/venv/bin/python3 /home/pi/raspberrypi-monitor/monitor.py
 Restart=always
 RestartSec=30
 
