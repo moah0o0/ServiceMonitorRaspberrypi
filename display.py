@@ -113,6 +113,18 @@ class Display:
     def mark_dirty(self):
         self._need_refresh = True
 
+    def _truncate(self, draw, text: str, font, max_width: int) -> str:
+        """텍스트가 max_width 픽셀을 넘지 않도록 자르기"""
+        bbox = draw.textbbox((0, 0), text, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            return text
+        while len(text) > 1:
+            text = text[:-1]
+            bbox = draw.textbbox((0, 0), text, font=font)
+            if bbox[2] - bbox[0] <= max_width:
+                return text
+        return text
+
     def update(self, states: list[dict]):
         if not self.enabled or not self._need_refresh:
             return
@@ -190,8 +202,8 @@ class Display:
         if has_errors:
             y = 190
             for s in errors[:2]:
-                name = s["name"][:15]
-                draw.text((10, y), f"X {name}", fill=COLOR_ERROR, font=self._font)
+                label = self._truncate(draw, f"X {s['name']}", self._font, 228)
+                draw.text((6, y), label, fill=COLOR_ERROR, font=self._font)
                 y += 28
 
         self._draw_page_indicator(draw, 0, total_pages)
@@ -200,13 +212,15 @@ class Display:
         """서비스 리스트 (5개씩)"""
         ok_count = len(oks)
 
-        # 헤더: 상태 요약
+        # 헤더: 상태 요약 (ERR=빨강, OK=초록 분리)
         if has_errors:
-            header = f"ERR {len(errors)}  OK {ok_count}"
-            draw.text((8, 4), header, fill=COLOR_ERROR, font=self._font)
+            err_text = f"ERR {len(errors)}"
+            draw.text((8, 4), err_text, fill=COLOR_ERROR, font=self._font)
+            bbox = draw.textbbox((0, 0), err_text + " ", font=self._font)
+            ok_x = 8 + bbox[2] - bbox[0]
+            draw.text((ok_x, 4), f"OK {ok_count}", fill=COLOR_OK, font=self._font)
         else:
-            header = f"ALL {total} OK"
-            draw.text((8, 4), header, fill=COLOR_OK, font=self._font)
+            draw.text((8, 4), f"ALL {total} OK", fill=COLOR_OK, font=self._font)
 
         draw.line([(0, 32), (240, 32)], fill=COLOR_DIM, width=1)
 
@@ -220,8 +234,8 @@ class Display:
             dot_color = COLOR_ERROR if is_error else COLOR_OK
             draw.ellipse([(6, y + 8), (20, y + 22)], fill=dot_color)
 
-            # 서비스 이름
-            name = s["name"][:10]
+            # 서비스 이름 (히스토리 바 전까지 맞춤)
+            name = self._truncate(draw, s["name"], self._font, 140)
             draw.text((26, y + 4), name, fill=COLOR_TEXT, font=self._font)
 
             # 히스토리 바 (우측)
@@ -268,8 +282,9 @@ class Display:
         draw.rectangle([(8, 85), (232, 180)], outline=COLOR_SYS_ERROR, width=2)
         lines = []
         while message:
-            lines.append(message[:14])
-            message = message[14:]
+            line = self._truncate(draw, message, self._font, 208)
+            lines.append(line)
+            message = message[len(line):]
         y = 95
         for line in lines[:3]:
             draw.text((16, y), line, fill=COLOR_TEXT, font=self._font)
