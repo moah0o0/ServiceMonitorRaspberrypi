@@ -95,7 +95,7 @@ class Monitor:
         while self.running:
             # 버튼 체크 (50ms마다)
             btn = self.display.check_buttons()
-            if btn["page_change"]:
+            if btn["needs_refresh"]:
                 self._refresh_display()
 
             sub_tick += 1

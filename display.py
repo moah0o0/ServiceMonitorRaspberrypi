@@ -100,6 +100,7 @@ class Display:
         self._tick = 0
         self._need_refresh = True
         self._system_error: str | None = None
+        self._error_detail = False   # 에러 상세 모드
 
     def set_system_error(self, message: str | None):
         if self._system_error != message:
@@ -107,6 +108,8 @@ class Display:
             self._need_refresh = True
 
     def advance_tick(self):
+        if self._error_detail:
+            return  # 에러 상세 모드에서는 자동 페이지 넘김 안 함
         self._tick += 1
         if self._tick >= PAGE_INTERVAL:
             self._tick = 0
@@ -193,6 +196,16 @@ class Display:
             self._draw_system_error(draw, self._system_error)
             self.disp.image(img)
             return
+
+        # 에러 상세 모드
+        if self._error_detail and errors:
+            err_pages = self._paginate_detail(draw, errors)
+            page = self._page % max(len(err_pages), 1)
+            self._draw_error_detail(draw, err_pages[page] if err_pages else [], page, len(err_pages))
+            self.disp.image(img)
+            return
+        elif self._error_detail and not errors:
+            self._error_detail = False  # 에러 없으면 자동 해제
 
         # 동적 페이지 계산
         list_pages = self._paginate(draw, sorted_states)
@@ -319,6 +332,59 @@ class Display:
             draw.ellipse([(x, y), (x + dot_size, y + dot_size)], fill=fill)
             x += gap
 
+    # ── 에러 상세 모드 ──
+
+    def _paginate_detail(self, draw, errors: list[dict]) -> list[list]:
+        """에러 서비스를 상세 모드용으로 페이지 분할 (히스토리 바 없음)"""
+        pages = []
+        current_page = []
+        y = LIST_TOP
+
+        for s in errors:
+            name_lines = self._wrap_text(draw, s["name"], self._font, TEXT_AREA_W)
+            msg_lines = self._wrap_text(draw, s.get("message", ""), self._font, TEXT_AREA_W) if s.get("message") else []
+            total_lines = len(name_lines) + len(msg_lines)
+            h = total_lines * LINE_H + ITEM_GAP
+
+            if y + h > LIST_BOTTOM and current_page:
+                pages.append(current_page)
+                current_page = []
+                y = LIST_TOP
+
+            current_page.append(s)
+            y += h
+
+        if current_page:
+            pages.append(current_page)
+        return pages or [[]]
+
+    def _draw_error_detail(self, draw, items: list[dict], page: int, total_pages: int):
+        """에러 상세 화면"""
+        draw.text((8, 4), "ERROR DETAIL", fill=COLOR_ERROR, font=self._font)
+        draw.line([(0, 32), (240, 32)], fill=COLOR_DIM, width=1)
+
+        y = LIST_TOP
+        for s in items:
+            # 빨간 도트
+            draw.ellipse([(6, y + 4), (20, y + 18)], fill=COLOR_ERROR)
+
+            # 서비스 이름
+            name_lines = self._wrap_text(draw, s["name"], self._font, TEXT_AREA_W)
+            for line in name_lines:
+                draw.text((26, y), line, fill=COLOR_TEXT, font=self._font)
+                y += LINE_H
+
+            # 에러 사유
+            if s.get("message"):
+                msg_lines = self._wrap_text(draw, s["message"], self._font, TEXT_AREA_W)
+                for line in msg_lines:
+                    draw.text((26, y), line, fill=COLOR_ERR_MSG, font=self._font)
+                    y += LINE_H
+
+            y += ITEM_GAP
+
+        self._draw_page_indicator(draw, page, total_pages)
+
     # ── 시스템 에러 ──
 
     def _draw_system_error(self, draw, message: str):
@@ -338,15 +404,22 @@ class Display:
     # ── 버튼 ──
 
     def check_buttons(self) -> dict:
-        result = {"page_change": False}
+        result = {"needs_refresh": False}
         if not self._gpio:
             return result
         for pin in (23, 24):
             cur = self._gpio.input(pin)
             if self._btn_prev[pin] and not cur:
-                self._page += 1
-                self._tick = 0
+                if pin == 23:
+                    # 버튼 A: 페이지 변경
+                    self._page += 1
+                    self._tick = 0
+                elif pin == 24:
+                    # 버튼 B: 에러 상세 토글
+                    self._error_detail = not self._error_detail
+                    self._page = 0
+                    self._tick = 0
                 self._need_refresh = True
-                result["page_change"] = True
+                result["needs_refresh"] = True
             self._btn_prev[pin] = cur
         return result
