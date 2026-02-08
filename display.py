@@ -20,8 +20,9 @@ KST = timezone(timedelta(hours=9))
 
 # 색상
 COLOR_BG = (0, 0, 0)
+COLOR_BG_ERROR = (60, 0, 0)      # 에러 시 배경 (어두운 빨강)
 COLOR_OK = (0, 200, 0)
-COLOR_ERROR = (220, 30, 30)
+COLOR_ERROR = (255, 50, 50)
 COLOR_WARN = (220, 180, 0)
 COLOR_TEXT = (255, 255, 255)
 COLOR_DIM = (120, 120, 120)
@@ -109,11 +110,18 @@ class Display:
                 font = ImageFont.load_default()
                 font_sm = font
 
-        # 상단: 시간 + 요약
+        # 에러 분류
+        errors = [s for s in states if s["status"] != "ok"]
+        oks = [s for s in states if s["status"] == "ok"]
+        has_errors = len(errors) > 0
+
+        # 에러 있으면 배경을 어두운 빨강으로
+        if has_errors:
+            draw.rectangle([(0, 0), (DISPLAY_WIDTH, DISPLAY_HEIGHT)], fill=COLOR_BG_ERROR)
+
         now = datetime.now(KST).strftime("%m/%d %H:%M:%S")
-        ok_count = sum(1 for s in states if s["status"] == "ok")
+        ok_count = len(oks)
         total = len(states)
-        summary_color = COLOR_OK if ok_count == total else COLOR_ERROR
 
         draw.text((5, 5), now, fill=COLOR_TEXT, font=font)
 
@@ -125,12 +133,15 @@ class Display:
             self.disp.image(img)
             return
 
-        draw.text((140, 5), f"{ok_count}/{total} OK", fill=summary_color, font=font)
-        draw.line([(0, 25), (240, 25)], fill=COLOR_DIM, width=1)
+        if has_errors:
+            err_text = f"ERR {len(errors)}"
+            draw.text((140, 5), err_text, fill=COLOR_ERROR, font=font)
+            draw.line([(0, 25), (240, 25)], fill=COLOR_ERROR, width=1)
+        else:
+            draw.text((140, 5), f"{ok_count}/{total} OK", fill=COLOR_OK, font=font)
+            draw.line([(0, 25), (240, 25)], fill=COLOR_DIM, width=1)
 
-        # 에러 우선 정렬: 에러 → 정상 순서
-        errors = [s for s in states if s["status"] != "ok"]
-        oks = [s for s in states if s["status"] == "ok"]
+        # 에러 우선 정렬
         sorted_states = errors + oks
 
         # 페이지 계산
