@@ -1,11 +1,9 @@
 """
 PiTFT 디스플레이 (240x240)
-Pillow로 이미지 생성 -> SPI로 전송
-라즈베리파이가 아닌 환경에서는 자동 비활성화
+최소 22pt Bold / 텍스트 줄바꿈 / 동적 페이지 분할
 
-최소 폰트 22pt / 빠른 페이지 전환 / 에러 강조
 - 페이지 0: 대시보드 (큰 원 + 상태)
-- 페이지 1+: 서비스 리스트 (5개씩, 에러 우선)
+- 페이지 1+: 서비스 리스트 (높이에 맞게 동적 분할)
 """
 
 import logging
@@ -19,7 +17,6 @@ COLOR_BG = (0, 0, 0)
 COLOR_BG_ERROR = (50, 0, 0)
 COLOR_OK = (0, 200, 0)
 COLOR_ERROR = (255, 50, 50)
-COLOR_WARN = (220, 180, 0)
 COLOR_TEXT = (255, 255, 255)
 COLOR_DIM = (80, 80, 80)
 COLOR_SYS_ERROR = (255, 60, 60)
@@ -31,8 +28,15 @@ COLOR_HISTORY_EMPTY = (40, 40, 40)
 
 DISPLAY_WIDTH = 240
 DISPLAY_HEIGHT = 240
-LIST_PER_PAGE = 4
-PAGE_INTERVAL = 3  # 3초마다 자동 페이지 전환
+PAGE_INTERVAL = 3
+
+# 리스트 레이아웃
+LIST_TOP = 36       # 헤더 아래
+LIST_BOTTOM = 222   # 페이지 도트 위
+LINE_H = 26         # 텍스트 한 줄 높이
+BAR_H = 14          # 히스토리 바 높이
+ITEM_GAP = 6        # 서비스 간 간격
+TEXT_AREA_W = 208    # 텍스트 영역 너비 (26~234)
 
 
 class Display:
@@ -61,7 +65,6 @@ class Display:
             self.enabled = True
             logger.info("PiTFT 디스플레이 초기화 성공")
 
-            # 폰트: 최소 22pt
             try:
                 self._font = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf", 22)
                 self._font_lg = ImageFont.truetype("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf", 30)
@@ -79,7 +82,6 @@ class Display:
         except (ImportError, Exception) as e:
             logger.info(f"PiTFT 사용 불가 (로컬 환경): {e}")
 
-        # 버튼 (GPIO 23, 24) - 폴링 방식
         self._gpio = None
         self._btn_prev = {23: True, 24: True}
         try:
@@ -113,17 +115,57 @@ class Display:
     def mark_dirty(self):
         self._need_refresh = True
 
-    def _truncate(self, draw, text: str, font, max_width: int) -> str:
-        """텍스트가 max_width 픽셀을 넘지 않도록 자르기"""
+    # ── 텍스트 유틸 ──
+
+    def _wrap_text(self, draw, text: str, font, max_width: int) -> list[str]:
+        """텍스트를 max_width 안에서 줄바꿈"""
         bbox = draw.textbbox((0, 0), text, font=font)
         if bbox[2] - bbox[0] <= max_width:
-            return text
-        while len(text) > 1:
-            text = text[:-1]
-            bbox = draw.textbbox((0, 0), text, font=font)
-            if bbox[2] - bbox[0] <= max_width:
-                return text
-        return text
+            return [text]
+        lines = []
+        current = ""
+        for ch in text:
+            test = current + ch
+            bbox = draw.textbbox((0, 0), test, font=font)
+            if bbox[2] - bbox[0] > max_width and current:
+                lines.append(current)
+                current = ch
+            else:
+                current = test
+        if current:
+            lines.append(current)
+        return lines or [text]
+
+    def _item_height(self, num_lines: int) -> int:
+        """서비스 아이템 1개의 총 높이"""
+        return num_lines * LINE_H + BAR_H + ITEM_GAP
+
+    # ── 동적 페이지 분할 ──
+
+    def _paginate(self, draw, items: list[dict]) -> list[list]:
+        """아이템들을 높이 기반으로 페이지 분할"""
+        pages = []
+        current_page = []
+        y = LIST_TOP
+
+        for s in items:
+            lines = self._wrap_text(draw, s["name"], self._font, TEXT_AREA_W)
+            h = self._item_height(len(lines))
+
+            if y + h > LIST_BOTTOM and current_page:
+                pages.append(current_page)
+                current_page = []
+                y = LIST_TOP
+
+            current_page.append(s)
+            y += h
+
+        if current_page:
+            pages.append(current_page)
+
+        return pages or [[]]
+
+    # ── 메인 업데이트 ──
 
     def update(self, states: list[dict]):
         if not self.enabled or not self._need_refresh:
@@ -137,10 +179,6 @@ class Display:
         has_errors = len(errors) > 0
         sorted_states = errors + oks
 
-        list_pages = max(1, (len(sorted_states) + LIST_PER_PAGE - 1) // LIST_PER_PAGE)
-        total_pages = 1 + list_pages
-        page = self._page % total_pages
-
         img = Image.new("RGB", (DISPLAY_WIDTH, DISPLAY_HEIGHT), COLOR_BG)
         draw = ImageDraw.Draw(img)
 
@@ -152,29 +190,31 @@ class Display:
             self.disp.image(img)
             return
 
+        # 동적 페이지 계산
+        list_pages = self._paginate(draw, sorted_states)
+        total_pages = 1 + len(list_pages)
+        page = self._page % total_pages
+
         if page == 0:
             self._draw_dashboard(draw, errors, oks, len(states), total_pages)
         else:
-            list_page = page - 1
-            start = list_page * LIST_PER_PAGE
-            page_items = sorted_states[start:start + LIST_PER_PAGE]
+            page_items = list_pages[page - 1]
             self._draw_list(draw, page_items, errors, oks, len(states), has_errors)
             self._draw_page_indicator(draw, page, total_pages)
 
         self.disp.image(img)
 
+    # ── 대시보드 ──
+
     def _draw_dashboard(self, draw, errors: list, oks: list, total: int, total_pages: int):
-        """대시보드: 큰 원 + 숫자"""
         ok_count = len(oks)
         has_errors = len(errors) > 0
 
-        # 시간
         now = datetime.now(KST).strftime("%H:%M")
         bbox = draw.textbbox((0, 0), now, font=self._font)
         tw = bbox[2] - bbox[0]
         draw.text(((DISPLAY_WIDTH - tw) // 2, 4), now, fill=COLOR_DIM, font=self._font)
 
-        # 큰 원
         cx, cy = 120, 110
         r = 65
         circle_color = COLOR_CIRCLE_ERR if has_errors else COLOR_CIRCLE_OK
@@ -184,35 +224,32 @@ class Display:
                 outline=circle_color, width=3,
             )
 
-        # 원 안의 숫자
         count_text = f"{ok_count}/{total}"
         bbox = draw.textbbox((0, 0), count_text, font=self._font_xl)
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
         draw.text(((DISPLAY_WIDTH - tw) // 2, cy - th - 4), count_text, fill=COLOR_TEXT, font=self._font_xl)
 
-        # UP / ERR
         status_text = "ERR" if has_errors else "UP"
         status_color = COLOR_ERROR if has_errors else COLOR_OK
         bbox = draw.textbbox((0, 0), status_text, font=self._font_lg)
         tw = bbox[2] - bbox[0]
         draw.text(((DISPLAY_WIDTH - tw) // 2, cy + 8), status_text, fill=status_color, font=self._font_lg)
 
-        # 에러 서비스 (원 아래, 최대 2개)
         if has_errors:
             y = 190
             for s in errors[:2]:
-                label = self._truncate(draw, f"X {s['name']}", self._font, 228)
-                draw.text((6, y), label, fill=COLOR_ERROR, font=self._font)
+                lines = self._wrap_text(draw, s["name"], self._font, 228)
+                draw.text((6, y), "X " + lines[0], fill=COLOR_ERROR, font=self._font)
                 y += 28
 
         self._draw_page_indicator(draw, 0, total_pages)
 
+    # ── 서비스 리스트 (동적 높이) ──
+
     def _draw_list(self, draw, items: list[dict], errors: list, oks: list, total: int, has_errors: bool):
-        """서비스 리스트 (5개씩)"""
         ok_count = len(oks)
 
-        # 헤더: 상태 요약 (ERR=빨강, OK=초록 분리)
         if has_errors:
             err_text = f"ERR {len(errors)}"
             draw.text((8, 4), err_text, fill=COLOR_ERROR, font=self._font)
@@ -224,33 +261,32 @@ class Display:
 
         draw.line([(0, 32), (240, 32)], fill=COLOR_DIM, width=1)
 
-        # 서비스 행 (2줄: 이름 + 히스토리 바)
-        y = 36
-        row_h = 46
+        y = LIST_TOP
         for s in items:
             is_error = s["status"] != "ok"
-
-            # 상태 도트
             dot_color = COLOR_ERROR if is_error else COLOR_OK
+
+            # 상태 도트 (첫 줄 기준)
             draw.ellipse([(6, y + 4), (20, y + 18)], fill=dot_color)
 
-            # 서비스 이름 (전체 너비 사용)
-            name = self._truncate(draw, s["name"], self._font, 210)
-            draw.text((26, y), name, fill=COLOR_TEXT, font=self._font)
+            # 서비스 이름 (줄바꿈)
+            lines = self._wrap_text(draw, s["name"], self._font, TEXT_AREA_W)
+            for line in lines:
+                draw.text((26, y), line, fill=COLOR_TEXT, font=self._font)
+                y += LINE_H
 
-            # 히스토리 바 (이름 아래)
+            # 히스토리 바
             history = s.get("history", [])
-            self._draw_history_bar(draw, 26, y + 26, history)
+            self._draw_history_bar(draw, 26, y, history)
+            y += BAR_H + ITEM_GAP
 
-            y += row_h
+    # ── 히스토리 바 ──
 
     def _draw_history_bar(self, draw, x: int, y: int, history: list[str]):
-        """최근 히스토리 블록 (8칸)"""
         block_w = 20
         block_h = 12
         gap = 3
         slots = 8
-
         for i in range(slots):
             bx = x + i * (block_w + gap)
             if i < len(history):
@@ -259,8 +295,9 @@ class Display:
                 color = COLOR_HISTORY_EMPTY
             draw.rectangle([(bx, y), (bx + block_w, y + block_h)], fill=color)
 
+    # ── 페이지 도트 ──
+
     def _draw_page_indicator(self, draw, current: int, total: int):
-        """하단 페이지 도트"""
         y = 230
         dot_size = 8
         gap = 16
@@ -271,20 +308,15 @@ class Display:
             draw.ellipse([(x, y), (x + dot_size, y + dot_size)], fill=fill)
             x += gap
 
+    # ── 시스템 에러 ──
+
     def _draw_system_error(self, draw, message: str):
-        """시스템 에러 전체 화면"""
-        # ERROR 타이틀
         bbox = draw.textbbox((0, 0), "ERROR", font=self._font_xl)
         tw = bbox[2] - bbox[0]
         draw.text(((DISPLAY_WIDTH - tw) // 2, 30), "ERROR", fill=COLOR_SYS_ERROR, font=self._font_xl)
 
-        # 에러 내용
         draw.rectangle([(8, 85), (232, 180)], outline=COLOR_SYS_ERROR, width=2)
-        lines = []
-        while message:
-            line = self._truncate(draw, message, self._font, 208)
-            lines.append(line)
-            message = message[len(line):]
+        lines = self._wrap_text(draw, message, self._font, 208)
         y = 95
         for line in lines[:3]:
             draw.text((16, y), line, fill=COLOR_TEXT, font=self._font)
@@ -292,8 +324,9 @@ class Display:
 
         draw.text((20, 200), "재시도 대기중...", fill=COLOR_DIM, font=self._font)
 
+    # ── 버튼 ──
+
     def check_buttons(self) -> dict:
-        """버튼 폴링: HIGH->LOW 전환 감지"""
         result = {"page_change": False}
         if not self._gpio:
             return result
