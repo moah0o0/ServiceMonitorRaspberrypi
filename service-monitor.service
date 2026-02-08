@@ -1,0 +1,15 @@
+[Unit]
+Description=Service Monitor (Raspberry Pi)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/raspberrypi-monitor
+ExecStart=/usr/bin/python3 /home/pi/raspberrypi-monitor/monitor.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

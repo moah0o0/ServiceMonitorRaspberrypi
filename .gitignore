@@ -1,0 +1,6 @@
+.env
+monitor.db
+__pycache__/
+*.pyc
+.DS_Store
+참고자료/
