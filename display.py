@@ -25,6 +25,7 @@ COLOR_CIRCLE_ERR = (200, 30, 30)
 COLOR_HISTORY_OK = (0, 150, 0)
 COLOR_HISTORY_ERR = (200, 40, 40)
 COLOR_HISTORY_EMPTY = (40, 40, 40)
+COLOR_ERR_MSG = (200, 130, 80)       # 에러 사유 (주황)
 
 DISPLAY_WIDTH = 240
 DISPLAY_HEIGHT = 240
@@ -150,7 +151,10 @@ class Display:
 
         for s in items:
             lines = self._wrap_text(draw, s["name"], self._font, TEXT_AREA_W)
-            h = self._item_height(len(lines))
+            msg_lines = 0
+            if s["status"] != "ok" and s.get("message"):
+                msg_lines = len(self._wrap_text(draw, s["message"], self._font, TEXT_AREA_W))
+            h = self._item_height(len(lines) + msg_lines)
 
             if y + h > LIST_BOTTOM and current_page:
                 pages.append(current_page)
@@ -274,6 +278,13 @@ class Display:
             for line in lines:
                 draw.text((26, y), line, fill=COLOR_TEXT, font=self._font)
                 y += LINE_H
+
+            # 에러 사유 표시
+            if is_error and s.get("message"):
+                msg_lines = self._wrap_text(draw, s["message"], self._font, TEXT_AREA_W)
+                for line in msg_lines:
+                    draw.text((26, y), line, fill=COLOR_ERR_MSG, font=self._font)
+                    y += LINE_H
 
             # 히스토리 바
             history = s.get("history", [])
