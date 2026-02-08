@@ -73,20 +73,18 @@ class Display:
         except (ImportError, Exception) as e:
             logger.info(f"PiTFT 사용 불가 (로컬 환경): {e}")
 
-        # 버튼 (GPIO 23, 24)
-        self.buttons_enabled = False
-        self.button_a = None
-        self.button_b = None
+        # 버튼 (GPIO 23, 24) - 인터럽트 방식
+        self._button_pressed = False
         try:
-            import board
-            import digitalio
-            self.button_a = digitalio.DigitalInOut(board.D23)
-            self.button_a.switch_to_input()
-            self.button_b = digitalio.DigitalInOut(board.D24)
-            self.button_b.switch_to_input()
-            self.buttons_enabled = True
-        except Exception:
-            pass
+            import RPi.GPIO as GPIO
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(23, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.setup(24, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.add_event_detect(23, GPIO.FALLING, callback=self._on_button, bouncetime=300)
+            GPIO.add_event_detect(24, GPIO.FALLING, callback=self._on_button, bouncetime=300)
+            logger.info("GPIO 버튼 인터럽트 등록 완료")
+        except Exception as e:
+            logger.info(f"GPIO 버튼 사용 불가: {e}")
 
         self._page = 0
         self._tick = 0
@@ -203,12 +201,15 @@ class Display:
             y += 16
         draw.text((30, 170), "자동 재시도 대기 중...", fill=COLOR_DIM, font=font_sm)
 
+    def _on_button(self, channel):
+        """GPIO 인터럽트 콜백 (즉시 반응)"""
+        self._button_pressed = True
+
     def check_buttons(self) -> dict:
-        """버튼 상태 확인"""
+        """버튼 눌림 확인 (인터럽트로 감지된 것 처리)"""
         result = {"page_change": False}
-        if not self.buttons_enabled:
-            return result
-        if not self.button_a.value or not self.button_b.value:
+        if self._button_pressed:
+            self._button_pressed = False
             self._page += 1
             self._tick = 0
             self._need_refresh = True
