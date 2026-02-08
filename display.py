@@ -215,15 +215,13 @@ class Display:
         draw.text((30, 170), "자동 재시도 대기 중...", fill=COLOR_DIM, font=font_sm)
 
     def check_buttons(self) -> dict:
-        """버튼 상태 확인. 반환: {"page_change": bool, "force_check": bool}"""
-        result = {"page_change": False, "force_check": False}
+        """버튼 상태 확인. 반환: {"page_change": bool}"""
+        result = {"page_change": False}
         if not self.buttons_enabled:
             return result
         # Mini PiTFT 버튼은 눌리면 False (active low)
-        if not self.button_a.value:
+        if not self.button_a.value or not self.button_b.value:
             self._page += 1
-            self._tick = 0  # 수동 넘김 시 타이머 리셋
+            self._tick = 0
             result["page_change"] = True
-        if not self.button_b.value:
-            result["force_check"] = True
         return result

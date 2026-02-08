@@ -95,10 +95,7 @@ class Monitor:
         while self.running:
             # 버튼 체크 (0.2초마다)
             btn = self.display.check_buttons()
-            if btn["force_check"]:
-                logger.info("수동 체크 요청 (버튼)")
-                self._force_check.set()
-            elif btn["page_change"]:
+            if btn["page_change"]:
                 self._refresh_display()
 
             sub_tick += 1
