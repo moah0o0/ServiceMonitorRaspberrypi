@@ -82,6 +82,7 @@ class Monitor:
         logger.info(f"===== 체크 완료: {ok_count}/{len(SERVICES)} 정상 =====\n")
 
         # 디스플레이 즉시 갱신
+        self.display.mark_dirty()
         self._refresh_display()
 
     def _refresh_display(self):
