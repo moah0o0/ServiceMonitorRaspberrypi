@@ -102,6 +102,27 @@ class Display:
         self._system_error: str | None = None
         self._error_detail = False   # 에러 상세 모드
 
+    def reinit(self):
+        """SPI/디스플레이 재초기화"""
+        try:
+            import board
+            import digitalio
+            from adafruit_rgb_display.st7789 import ST7789
+
+            cs_pin = digitalio.DigitalInOut(board.CE0)
+            dc_pin = digitalio.DigitalInOut(board.D25)
+            spi = board.SPI()
+            self.disp = ST7789(
+                spi, cs=cs_pin, dc=dc_pin, rst=None,
+                baudrate=64000000, width=DISPLAY_WIDTH, height=DISPLAY_HEIGHT,
+                x_offset=0, y_offset=80, rotation=270,
+            )
+            self.enabled = True
+            self._need_refresh = True
+            logger.info("PiTFT 디스플레이 재초기화 성공")
+        except Exception as e:
+            logger.error(f"PiTFT 재초기화 실패: {e}")
+
     def set_system_error(self, message: str | None):
         if self._system_error != message:
             self._system_error = message

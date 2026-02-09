@@ -92,21 +92,32 @@ class Monitor:
     def _display_loop(self):
         """디스플레이 전용 스레드: 0.05초마다 버튼 체크, 1초마다 화면 갱신"""
         sub_tick = 0
+        consecutive_errors = 0
         while self.running:
-            # 버튼 체크 (50ms마다)
-            btn = self.display.check_buttons()
-            if btn["needs_refresh"]:
-                self._refresh_display()
-
-            sub_tick += 1
-            # 1초마다 (20 × 0.05초) 화면 갱신 + 페이지 타이머
-            if sub_tick >= 20:
-                sub_tick = 0
-                self.display.advance_tick()
-                if self.display.enabled:
+            try:
+                # 버튼 체크 (50ms마다)
+                btn = self.display.check_buttons()
+                if btn["needs_refresh"]:
                     self._refresh_display()
 
-            time.sleep(0.05)
+                sub_tick += 1
+                # 1초마다 (20 × 0.05초) 화면 갱신 + 페이지 타이머
+                if sub_tick >= 20:
+                    sub_tick = 0
+                    self.display.advance_tick()
+                    if self.display.enabled:
+                        self._refresh_display()
+
+                consecutive_errors = 0
+                time.sleep(0.05)
+            except Exception as e:
+                consecutive_errors += 1
+                logger.warning(f"디스플레이 스레드 오류 ({consecutive_errors}회): {e}")
+                if consecutive_errors >= 10:
+                    logger.error("디스플레이 스레드 오류 반복, 재초기화 시도")
+                    self.display.reinit()
+                    consecutive_errors = 0
+                time.sleep(1)
 
     def run(self):
         """메인 루프"""
